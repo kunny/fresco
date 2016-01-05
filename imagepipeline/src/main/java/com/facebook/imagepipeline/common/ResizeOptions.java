@@ -13,6 +13,7 @@ import java.util.Locale;
 
 import com.facebook.common.internal.Preconditions;
 import com.facebook.common.util.HashCodeUtil;
+import com.facebook.imageutils.BitmapUtil;
 
 /**
  * Options for resizing.
@@ -35,6 +36,13 @@ public class ResizeOptions {
     Preconditions.checkArgument(height > 0);
     this.width = width;
     this.height = height;
+  }
+
+    public ResizeOptions(
+      int maxSupportedSize) {
+    Preconditions.checkArgument(maxSupportedSize > 0);
+    this.width = maxSupportedSize;
+    this.height = maxSupportedSize;
   }
 
   @Override
