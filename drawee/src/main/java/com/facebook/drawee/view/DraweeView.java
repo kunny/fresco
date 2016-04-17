@@ -39,10 +39,12 @@ import com.facebook.drawee.interfaces.DraweeController;
  * support ImageView's setImageXxx, setScaleType and similar methods. Extending ImageView is a short
  * term solution in order to inherit some of its implementation (padding calculations, etc.).
  * This class is likely to be converted to extend View directly in the future, so avoid using
- * ImageView's methods and properties (T5856175).
+ * ImageView's methods and properties.
  */
 public class DraweeView<DH extends DraweeHierarchy> extends ImageView {
 
+  private final AspectRatioMeasure.Spec mMeasureSpec = new AspectRatioMeasure.Spec();
+  private float mAspectRatio = 0;
   private DraweeHolder<DH> mDraweeHolder;
   private boolean mInitialised = false;
 
@@ -198,6 +200,37 @@ public class DraweeView<DH extends DraweeHierarchy> extends ImageView {
     init(getContext());
     mDraweeHolder.setController(null);
     super.setImageURI(uri);
+  }
+
+  /**
+   * Sets the desired aspect ratio (w/h).
+   */
+  public void setAspectRatio(float aspectRatio) {
+    if (aspectRatio == mAspectRatio) {
+      return;
+    }
+    mAspectRatio = aspectRatio;
+    requestLayout();
+  }
+
+  /**
+   * Gets the desired aspect ratio (w/h).
+   */
+  public float getAspectRatio() {
+    return mAspectRatio;
+  }
+
+  @Override
+  protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+    mMeasureSpec.width = widthMeasureSpec;
+    mMeasureSpec.height = heightMeasureSpec;
+    AspectRatioMeasure.updateMeasureSpec(
+        mMeasureSpec,
+        mAspectRatio,
+        getLayoutParams(),
+        getPaddingLeft() + getPaddingRight(),
+        getPaddingTop() + getPaddingBottom());
+    super.onMeasure(mMeasureSpec.width, mMeasureSpec.height);
   }
 
   @Override

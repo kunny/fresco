@@ -36,6 +36,8 @@ public class ArrayDrawable extends Drawable
 
   // layers
   private final Drawable[] mLayers;
+  // drawable parents for the layers (lazily created)
+  private final DrawableParent[] mDrawableParents;
 
   // temp rect to avoid allocations
   private final Rect mTmpRect = new Rect();
@@ -45,11 +47,6 @@ public class ArrayDrawable extends Drawable
   private boolean mIsStatefulCalculated = false;
 
   private boolean mIsMutated = false;
-
-  private final Rect mBounds = new Rect();
-  private int mLevel;
-  private int[] mState;
-  private boolean mIsVisible;
 
   /**
    * Constructs a new layer drawable.
@@ -61,6 +58,7 @@ public class ArrayDrawable extends Drawable
     for (int i = 0; i < mLayers.length; i++) {
       DrawableUtils.setCallbacks(mLayers[i], this, this);
     }
+    mDrawableParents = new DrawableParent[mLayers.length];
   }
 
   /**
@@ -78,34 +76,32 @@ public class ArrayDrawable extends Drawable
    */
   @Nullable
   public Drawable getDrawable(int index) {
+    Preconditions.checkArgument(index >= 0);
+    Preconditions.checkArgument(index < mLayers.length);
     return mLayers[index];
   }
 
-  /** Sets a new drawable at the specified index. */
-  public void setDrawable(int index, @Nullable Drawable drawable) {
+  /** Sets a new drawable at the specified index, and return the previous drawable, if any. */
+  @Nullable
+  public Drawable setDrawable(int index, @Nullable Drawable drawable) {
     Preconditions.checkArgument(index >= 0);
     Preconditions.checkArgument(index < mLayers.length);
-    if (drawable != mLayers[index]) {
+    final Drawable oldDrawable = mLayers[index];
+    if (drawable != oldDrawable) {
       if (drawable != null && mIsMutated) {
-        drawable = drawable.mutate();
+        drawable.mutate();
       }
 
       DrawableUtils.setCallbacks(mLayers[index], null, null);
       DrawableUtils.setCallbacks(drawable, null, null);
       DrawableUtils.setDrawableProperties(drawable, mDrawableProperties);
-
-      if (drawable != null) {
-        drawable.setBounds(mBounds);
-        drawable.setLevel(mLevel);
-        drawable.setState(mState);
-        drawable.setVisible(mIsVisible, /* restart */ false);
-      }
-
+      DrawableUtils.copyProperties(drawable, this);
       DrawableUtils.setCallbacks(drawable, this, this);
       mIsStatefulCalculated = false;
       mLayers[index] = drawable;
       invalidateSelf();
     }
+    return oldDrawable;
   }
 
 
@@ -135,8 +131,6 @@ public class ArrayDrawable extends Drawable
 
   @Override
   protected void onBoundsChange(Rect bounds) {
-    mBounds.set(bounds);
-
     for (int i = 0; i < mLayers.length; i++) {
       Drawable drawable = mLayers[i];
       if (drawable != null) {
@@ -160,8 +154,6 @@ public class ArrayDrawable extends Drawable
 
   @Override
   protected boolean onStateChange(int[] state) {
-    mState = state;
-
     boolean stateChanged = false;
     for (int i = 0; i < mLayers.length; i++) {
       Drawable drawable = mLayers[i];
@@ -174,8 +166,6 @@ public class ArrayDrawable extends Drawable
 
   @Override
   protected boolean onLevelChange(int level) {
-    mLevel = level;
-
     boolean levelChanged = false;
     for (int i = 0; i < mLayers.length; i++) {
       Drawable drawable = mLayers[i];
@@ -289,8 +279,6 @@ public class ArrayDrawable extends Drawable
 
   @Override
   public boolean setVisible(boolean visible, boolean restart) {
-    mIsVisible = visible;
-
     boolean changed = super.setVisible(visible, restart);
     for (int i = 0; i < mLayers.length; i++) {
       Drawable drawable = mLayers[i];
@@ -299,6 +287,32 @@ public class ArrayDrawable extends Drawable
       }
     }
     return changed;
+  }
+
+  /**
+   * Gets the {@code DrawableParent} for index.
+   */
+  public DrawableParent getDrawableParentForIndex(int index) {
+    Preconditions.checkArgument(index >= 0);
+    Preconditions.checkArgument(index < mDrawableParents.length);
+    if (mDrawableParents[index] == null) {
+      mDrawableParents[index] = createDrawableParentForIndex(index);
+    }
+    return mDrawableParents[index];
+  }
+
+  private DrawableParent createDrawableParentForIndex(final int index) {
+    return new DrawableParent() {
+      @Override
+      public Drawable setDrawable(Drawable newDrawable) {
+        return ArrayDrawable.this.setDrawable(index, newDrawable);
+      }
+
+      @Override
+      public Drawable getDrawable() {
+        return ArrayDrawable.this.getDrawable(index);
+      }
+    };
   }
 
   /**

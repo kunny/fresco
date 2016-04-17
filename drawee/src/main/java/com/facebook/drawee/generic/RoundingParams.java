@@ -14,6 +14,7 @@ import java.util.Arrays;
 import android.graphics.Color;
 
 import com.facebook.common.internal.Preconditions;
+import com.facebook.drawee.drawable.ScalingUtils;
 
 /**
  * Class that encapsulates rounding parameters.
@@ -29,10 +30,10 @@ public class RoundingParams {
     OVERLAY_COLOR,
 
     /**
-     * Uses BitmapShader to draw bitmap with rounded corners. Works only with BitmapDrawables and
-     * ColorDrawables.
-     * IMPORTANT: Only the actual image and the placeholder image will get rounded. Other images
-     * (such as retry, failure, progress bar, backgrounds, overlays, etc.) won't get rounded.
+     * Uses BitmapShader to draw the bitmap with rounded corners. This is the default rounding
+     * method. It doesn't support animations, and it does not support any scale types other than
+     * {@link ScalingUtils.ScaleType#CENTER_CROP}, {@link ScalingUtils.ScaleType#FOCUS_CROP} and
+     * {@link ScalingUtils.ScaleType#FIT_XY}.
      */
     BITMAP_ONLY
   }
@@ -43,6 +44,7 @@ public class RoundingParams {
   private int mOverlayColor = 0;
   private float mBorderWidth = 0;
   private int mBorderColor = Color.TRANSPARENT;
+  private float mPadding = 0;
 
   /**
    *  Sets whether to round as circle.
@@ -182,6 +184,37 @@ public class RoundingParams {
   }
 
   /**
+   * Sets the border width
+   * @param color of the border
+   * @param width of the width
+   */
+  public RoundingParams setBorderWidth(float width) {
+    Preconditions.checkArgument(width >= 0, "the border width cannot be < 0");
+    mBorderWidth = width;
+    return this;
+  }
+
+  /** Gets the border width */
+  public float getBorderWidth() {
+    return mBorderWidth;
+  }
+
+  /**
+   * Sets the border color
+   * @param color of the border
+   * @param width of the width
+   */
+  public RoundingParams setBorderColor(int color) {
+    mBorderColor = color;
+    return this;
+  }
+
+  /** Gets the border color */
+  public int getBorderColor() {
+    return mBorderColor;
+  }
+
+  /**
    * Sets the border around the rounded drawable
    * @param color of the border
    * @param width of the width
@@ -193,13 +226,70 @@ public class RoundingParams {
     return this;
   }
 
-  /** Gets the border width */
-  public float getBorderWidth() {
-    return mBorderWidth;
+  /**
+   * Sets the padding on rounded drawable. Works only with {@code RoundingMethod.BITMAP_ONLY}
+   * @param padding the padding in pixels
+   */
+  public RoundingParams setPadding(float padding){
+    Preconditions.checkArgument(padding >= 0, "the padding cannot be < 0");
+    mPadding = padding;
+    return this;
   }
 
-  /** Gets the border color */
-  public int getBorderColor() {
-    return mBorderColor;
+  /** Gets the padding size */
+  public float getPadding() {
+    return mPadding;
+  }
+
+  @Override
+  public boolean equals(Object o) {
+    if (this == o) {
+      return true;
+    }
+    if (o == null || getClass() != o.getClass()) {
+      return false;
+    }
+
+    RoundingParams that = (RoundingParams) o;
+
+    if (mRoundAsCircle != that.mRoundAsCircle) {
+      return false;
+    }
+
+    if (mOverlayColor != that.mOverlayColor) {
+      return false;
+    }
+
+    if (Float.compare(that.mBorderWidth, mBorderWidth) != 0) {
+      return false;
+    }
+
+    if (mBorderColor != that.mBorderColor) {
+      return false;
+    }
+
+    if (Float.compare(that.mPadding, mPadding) != 0) {
+      return false;
+    }
+
+    if (mRoundingMethod != that.mRoundingMethod) {
+      return false;
+    }
+
+    return Arrays.equals(mCornersRadii, that.mCornersRadii);
+
+  }
+
+  @Override
+  public int hashCode() {
+    int result = mRoundingMethod != null ? mRoundingMethod.hashCode() : 0;
+    result = 31 * result + (mRoundAsCircle ? 1 : 0);
+    result = 31 * result + (mCornersRadii != null ? Arrays.hashCode(mCornersRadii) : 0);
+    result = 31 * result + mOverlayColor;
+    result = 31 * result + (mBorderWidth != +0.0f ? Float.floatToIntBits(mBorderWidth) : 0);
+    result = 31 * result + mBorderColor;
+    result = 31 * result + (mPadding != +0.0f ? Float.floatToIntBits(mPadding) : 0);
+
+    return result;
   }
 }

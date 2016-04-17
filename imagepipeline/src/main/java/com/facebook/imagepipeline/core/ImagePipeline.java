@@ -26,8 +26,7 @@ import com.facebook.common.references.CloseableReference;
 import com.facebook.common.util.UriUtil;
 import com.facebook.datasource.DataSource;
 import com.facebook.datasource.DataSources;
-import com.facebook.datasource.SettableDataSource;
-import com.facebook.imagepipeline.cache.BitmapMemoryCacheKey;
+import com.facebook.datasource.SimpleDataSource;
 import com.facebook.imagepipeline.cache.BufferedDiskCache;
 import com.facebook.imagepipeline.cache.MemoryCache;
 import com.facebook.imagepipeline.cache.CacheKeyFactory;
@@ -48,13 +47,13 @@ import com.android.internal.util.Predicate;
 import com.facebook.imagepipeline.request.ImageRequestBuilder;
 
 import bolts.Task;
+import com.facebook.imagepipeline.producers.ThreadHandoffProducerQueue;
 
 /**
  * The entry point for the image pipeline.
  */
 @ThreadSafe
 public class ImagePipeline {
-
   private static final CancellationException PREFETCH_EXCEPTION =
       new CancellationException("Prefetching is not enabled");
 
@@ -66,7 +65,7 @@ public class ImagePipeline {
   private final BufferedDiskCache mMainBufferedDiskCache;
   private final BufferedDiskCache mSmallImageBufferedDiskCache;
   private final CacheKeyFactory mCacheKeyFactory;
-
+  private final ThreadHandoffProducerQueue mThreadHandoffProducerQueue;
   private AtomicLong mIdCounter;
 
   public ImagePipeline(
@@ -77,7 +76,8 @@ public class ImagePipeline {
       MemoryCache<CacheKey, PooledByteBuffer> encodedMemoryCache,
       BufferedDiskCache mainBufferedDiskCache,
       BufferedDiskCache smallImageBufferedDiskCache,
-      CacheKeyFactory cacheKeyFactory) {
+      CacheKeyFactory cacheKeyFactory,
+      ThreadHandoffProducerQueue threadHandoffProducerQueue) {
     mIdCounter = new AtomicLong();
     mProducerSequenceFactory = producerSequenceFactory;
     mRequestListener = new ForwardingRequestListener(requestListeners);
@@ -87,6 +87,7 @@ public class ImagePipeline {
     mMainBufferedDiskCache = mainBufferedDiskCache;
     mSmallImageBufferedDiskCache = smallImageBufferedDiskCache;
     mCacheKeyFactory = cacheKeyFactory;
+    mThreadHandoffProducerQueue = threadHandoffProducerQueue;
   }
 
   /**
@@ -292,18 +293,9 @@ public class ImagePipeline {
    * @param uri The uri of the image to evict
    */
   public void evictFromMemoryCache(final Uri uri) {
-    Predicate<CacheKey> bitmapCachePredicate = predicateForUri(uri);
-    mBitmapMemoryCache.removeAll(bitmapCachePredicate);
-
-    final String cacheKeySourceString = mCacheKeyFactory.getCacheKeySourceUri(uri).toString();
-    Predicate<CacheKey> encodedCachePredicate =
-        new Predicate<CacheKey>() {
-          @Override
-          public boolean apply(CacheKey key) {
-            return key.toString().equals(cacheKeySourceString);
-          }
-        };
-    mEncodedMemoryCache.removeAll(encodedCachePredicate);
+    Predicate<CacheKey> predicate = predicateForUri(uri);
+    mBitmapMemoryCache.removeAll(predicate);
+    mEncodedMemoryCache.removeAll(predicate);
   }
 
   /**
@@ -322,7 +314,7 @@ public class ImagePipeline {
    * @param imageRequest The imageRequest for the image to evict from disk cache
    */
   public void evictFromDiskCache(final ImageRequest imageRequest) {
-    final CacheKey cacheKey = mCacheKeyFactory.getEncodedCacheKey(imageRequest);
+    CacheKey cacheKey = mCacheKeyFactory.getEncodedCacheKey(imageRequest);
     mMainBufferedDiskCache.remove(cacheKey);
     mSmallImageBufferedDiskCache.remove(cacheKey);
   }
@@ -419,7 +411,7 @@ public class ImagePipeline {
    */
   public DataSource<Boolean> isInDiskCache(final ImageRequest imageRequest) {
     final CacheKey cacheKey = mCacheKeyFactory.getEncodedCacheKey(imageRequest);
-    final SettableDataSource<Boolean> dataSource = SettableDataSource.create();
+    final SimpleDataSource<Boolean> dataSource = SimpleDataSource.create();
     mMainBufferedDiskCache.contains(cacheKey)
         .continueWithTask(
             new Continuation<Boolean, Task<Boolean>>() {
@@ -499,16 +491,24 @@ public class ImagePipeline {
     }
   }
 
-  private Predicate<CacheKey> predicateForUri(Uri uri) {
-    final String cacheKeySourceString = mCacheKeyFactory.getCacheKeySourceUri(uri).toString();
+  private Predicate<CacheKey> predicateForUri(final Uri uri) {
     return new Predicate<CacheKey>() {
           @Override
           public boolean apply(CacheKey key) {
-            if (key instanceof BitmapMemoryCacheKey) {
-              return ((BitmapMemoryCacheKey) key).getSourceUriString().equals(cacheKeySourceString);
-            }
-            return false;
+            return key.containsUri(uri);
           }
         };
+  }
+
+  public void pause() {
+    mThreadHandoffProducerQueue.startQueueing();
+  }
+
+  public void resume() {
+    mThreadHandoffProducerQueue.stopQueuing();
+  }
+
+  public boolean isPaused() {
+    return mThreadHandoffProducerQueue.isQueueing();
   }
 }
